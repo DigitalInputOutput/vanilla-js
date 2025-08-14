@@ -1,5 +1,5 @@
-import { Alert } from "/static/js/vanilla/ui/alert.js";
-import { Cookie } from "/static/js/vanilla/ui/cookie.js";
+import { Alert } from "/static/js/vanilla-js/ui/alert.js";
+import { Cookie } from "/static/js/vanilla-js/ui/cookie.js";
 
 export class Request {
     constructor(method, href, context = { title: document.title }, successCallback) {

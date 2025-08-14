@@ -1,7 +1,7 @@
 import { HistoryManager } from "./history.js";
-import { View } from "/static/js/vanilla/http/view.js";
+import { View } from "/static/js/vanilla-js/http/view.js";
 import { Request } from "./request.js";
-import { Alert } from "/static/js/vanilla/ui/alert.js";
+import { Alert } from "/static/js/vanilla-js/ui/alert.js";
 
 export class Navigation {
     static urlpatterns = {};

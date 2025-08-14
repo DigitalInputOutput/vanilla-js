@@ -1,4 +1,4 @@
-import { GET } from "/static/js/vanilla/http/navigation.js";
+import { GET } from "/static/js/vanilla-js/http/navigation.js";
 
 class ValueManager {
     constructor(hiddenInput) {
