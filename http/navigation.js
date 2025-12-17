@@ -82,7 +82,7 @@ export class Navigation {
     static click(e) {
         const target = e.target.closest('a'); 
 
-        if (!target?.href) return;
+        if (!target?.href || target?.target) return;
 
         e.preventDefault();
         e.stopPropagation();

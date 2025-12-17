@@ -42,6 +42,16 @@ export class Request {
     async processResponse(response) {
         let data = {};
 
+        // console.log(response.status);
+        if (response.status === 301 || response.status === 302 || response.status === 405) {
+            const redirect = response.headers.get('Location');
+            console.log(redirect);
+            if (redirect && redirect.includes('/login')) {
+                location.reload();
+                return;
+            }
+        }
+
         if (!response.ok) {
             Alert.popMessage(JSON.stringify({ status: response.status }));
             return;

@@ -43,18 +43,16 @@ class ValueManager {
 export class Autocomplete {
     constructor(context) {
         this.container = context.container;
-        this.model = context.Model || context.AdminModel;
+        this.AdminModel = context.Model || context.AdminModel;
         this.success = context.success || null;
         this.minLength = context.minLength || 3;
         this.delay = context.delay || 500;
 
-        this.variants = this.container.find('.variants')[0];
+        this.variantsContainer = this.container.find('.variants')[0];
         this.hidden = this.container.find('input[type="hidden"]')[0] || null;
         this.textInput = this.container.find('input[type="text"]')[0];
         this.valuesContainer = this.container.find('.values')[0] || null;
         this.removeButton = this.container.find('.remove');
-
-        this.valueManager = new ValueManager(this.hidden);
 
         this.timeout = null;
         this.active = null;
@@ -85,11 +83,11 @@ export class Autocomplete {
         if (input.length < this.minLength) return;
 
         this.timeout = setTimeout(() => {
-            GET(`/autocomplete/${this.model}/${input}`, {
+            GET(`/autocomplete/${this.AdminModel}/${input}`, {
                 success: (response) => {
-                    Dom.render("#variants", this.variants, response.items || response);
+                    Dom.render("#variants", this.variantsContainer, response);
                     this.container.find('.variant, .variants div').on('click', this.success || this.add.bind(this));
-                    this.variants.show();
+                    this.variantsContainer.show();
                 }
             });
         }, this.delay);
@@ -99,34 +97,38 @@ export class Autocomplete {
         const id = parseInt(event.target.get('value'));
         const name = event.target.text();
 
-        if (!this.hidden) {
-            this.textInput.value = name;
-            this.variants.hide();
-            return;
+        if(this.hidden.value !== id){
+            this.hidden.value = id;
+            this.addValue(id, name);
         }
 
-        this.valueManager.addValue(id);
-
-        if (this.valuesContainer) {
-            Dom.render("#autocomplete_value", this.valuesContainer, {
-                id, name, AdminModel: this.model.title ? this.model.title() : this.model
-            });
-            Dom.query(`.autocomplete.${this.model} .remove[value="${id}"]`).on('click', this.remove.bind(this));
-        }
-
-        this.variants.hide();
+        this.variantsContainer.hide();
+        this.variantsContainer.clear();
         this.textInput.value = '';
+    }
+
+    addValue(id, name) {
+        if (this.valuesContainer) {
+            this.valuesContainer.clear();
+            Dom.render("#autocomplete_value", this.valuesContainer, {
+                id, name, AdminModel: this.AdminModel
+            });
+            Dom.query(`.autocomplete.${this.AdminModel} .remove[value="${id}"]`).on('click', this.remove.bind(this));
+
+            lucide.createIcons( lucide.icons );
+        }
     }
 
     remove(e) {
         const id = parseInt(e.target.get('value'));
+
         if (!id) {
             e.target.parent().click();
             return false;
         }
-        this.valueManager.removeValue(id);
+
+        this.hidden.value = "";
         e.target.parent().remove();
-        Dom.query('#save').removeAttr('disabled');
     }
 
     press_enter(e) {
@@ -158,4 +160,57 @@ export class Autocomplete {
         }
         this.active.addClass('active');
     }
+}
+
+export class AutocompleteMultiple extends Autocomplete{
+    constructor(context) {
+        super(context);
+
+        this.valueManager = new ValueManager(this.hidden);
+    }
+
+    add(event) {
+        const id = parseInt(event.target.get('value'));
+        const name = event.target.text();
+        const values = this.valueManager.getValues();
+
+        if (!this.hidden) {
+            this.textInput.value = name;
+            this.variantsContainer.hide();
+            return;
+        }
+
+        if(!values.includes(id))
+            this.addValue(id, name);
+
+        this.variantsContainer.hide();
+        this.variantsContainer.clear();
+        this.textInput.value = '';
+    }
+
+    addValue(id, name) {
+        this.valueManager.addValue(id);
+
+        if (this.valuesContainer) {
+            Dom.render("#autocomplete_value", this.valuesContainer, {
+                id, name, AdminModel: this.AdminModel
+            });
+            Dom.query(`.autocomplete.${this.AdminModel} .remove[value="${id}"]`).on('click', this.remove.bind(this));
+
+            lucide.createIcons( lucide.icons );
+        }
+    }
+
+    remove(e) {
+        const id = parseInt(e.target.get('value'));
+
+        if (!id) {
+            e.target.parent().click();
+            return false;
+        }
+
+        this.valueManager.removeValue(id);
+        e.target.parent().remove();
+    }
+
 }

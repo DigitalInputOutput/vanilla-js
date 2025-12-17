@@ -25,7 +25,6 @@ export class Dom {
 		html = Dom.renderConditions(html, context);
 		html = Dom.renderVariables(html, context);
 
-		// console.log(context);
 		// console.log(!context || typeof context !== 'object' || Object.keys(context).length === 0);
 
 		return container.append(html);
