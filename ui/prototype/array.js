@@ -58,6 +58,11 @@
 				elem.innerHTML += html;
 			});
 		},
+		removeAttr(name){
+			this.forEach((elem) => {
+				elem.removeAttribute(name);
+			});
+		},
 		toggleClass(name){
 			this.forEach((elem) => {
 				if(elem.hasClass(name))

@@ -1,3 +1,3 @@
 
-export const storage = localStorage;
-export var timeout;
+window.storage = localStorage;
+window.timeout;

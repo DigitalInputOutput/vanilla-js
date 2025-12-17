@@ -1,20 +1,22 @@
 import { Dom } from '/static/js/vanilla-js/ui/dom.js';
-import { POST } from '/static/js/vanilla-js/http/navigation.js';
+import { t } from '/static/js/vanilla-js/i18n.js'; 
 
 export class Validator {
-	constructor(form, rules, submitButton) {
+	constructor(form, params){
 		this.valid = new Set();
 		this.invalid = new Set();
 		this.form = form;
-		this.rules = rules;
-		this.submitButton = this.form.find('#submit') || submitButton;
+		this.rules = this.prepareValidationRules(form, params);
+		this.submitButton = params.submitButton ? params.submitButton : this.form.find('#submit');
 		this.form.valid = false;
+		this.tabsSwitcher = params.tabsSwitcher;
+		this.uniqueFunction = params.uniqueFunction;
 
 		if (this.submitButton) {
 			this.form.on('submit', this.submit.bind(this));
 		}
 
-		for (let [field, rulesList] of Object.entries(rules)) {
+		for (let [field, rulesList] of Object.entries(this.rules)) {
 			const element = this.getElement(field);
 			if (element) this.listenRules(element, rulesList);
 		}
@@ -25,12 +27,14 @@ export class Validator {
 	}
 
 	listenRules(elem, rule) {
-		const eventTypes = rule.event || 'paste keydown focusout';
+		const eventTypes = "listen" in rule ? rule.listen : 'paste keydown focusout';
 		elem.on(eventTypes, (event) => this.handleValidation(event, elem, rule));
 	}
 
 	handleValidation(event, elem, rule) {
 		if (elem.timeout) clearTimeout(elem.timeout);
+
+		this.clearError(elem);
 
 		if (event.type === 'focusout') {
 			if (!elem.value && rule.rules.required && elem.type != "checkbox") {
@@ -40,8 +44,6 @@ export class Validator {
 				return false;
 			}
 		}
-
-		this.clearError(elem);
 
 		if (!event.metaKey && ![8, 9].includes(event.keyCode)) {
 			if (rule.rules.max_length && elem.value.length >= rule.rules.max_length) {
@@ -58,7 +60,7 @@ export class Validator {
 
 		elem.timeout = setTimeout(() => {
 			if (!elem.value && !rule.rules.required && elem.type != "checkbox") return;
-			this.cleanWhitespaces(elem);
+			// this.cleanWhitespaces(elem);
 			this.validate(elem, rule);
 			if (!elem.invalid && rule.unique) this.unique(elem, rule.errors.unique);
 		}, rule.timeout || 1000);
@@ -80,6 +82,61 @@ export class Validator {
 		return errorMsg;
 	}
 
+	prepareValidationRules(form, params){
+		let validationRules = {};
+		form.querySelectorAll('input, select').forEach(inp => {
+			if(inp.type == 'hidden' || !inp.name)
+				return;
+
+			validationRules[inp.name] = {
+				'rules': {},
+				'errors': {}
+			};
+
+			if(inp.required){
+				validationRules[inp.name]['rules']['required'] = true;
+				validationRules[inp.name]['errors']['required'] = t('required_error');
+			}
+
+			if(inp.maxLength && inp.maxLength > 0){
+				validationRules[inp.name]['rules']['max_length'] = inp.maxLength;
+				validationRules[inp.name]['errors']['max_length'] = t('max_length_error') + inp.maxLength;
+			}
+
+			if(inp.minLength && inp.minLength > 0){
+				validationRules[inp.name]['rules']['min_length'] = inp.minLength;
+				validationRules[inp.name]['errors']['min_length'] = t('max_length_error') + inp.minLength;
+			}
+		});
+
+		if (params.rules) {
+			for (let field in params.rules) {
+				if (!validationRules[field]) {
+					validationRules[field] = {};
+				}
+
+				if (params.rules[field].rules) {
+					validationRules[field].rules = {
+						...validationRules[field].rules,
+						...params.rules[field].rules
+					};
+				}
+
+				if (params.rules[field].errors) {
+					validationRules[field].errors = {
+						...validationRules[field].errors,
+						...params.rules[field].errors
+					};
+				}
+
+				if (params.rules[field].listen)
+					validationRules[field].listen = params.rules[field].listen;
+			}
+		}
+
+		return validationRules;
+	}
+
 	required(elem, rule){
 		return elem.value && rule;
 	}
@@ -91,9 +148,22 @@ export class Validator {
 		}
 
 		if (this.invalid.size) {
-			this.invalid.values().next().value.focus();
+			this.focusFirstInvalidWithTab();
 			return false;
 		}
+		return true;
+	}
+
+	validateTab(elems){
+		for(let elem of elems) {
+			this.validate(elem, this.rules[elem.name]);
+		}
+
+		if (this.invalid.size) {
+			this.focusFirstInvalidWithTab();
+			return false;
+		}
+
 		return true;
 	}
 
@@ -113,7 +183,7 @@ export class Validator {
 		}
 
 		if (this.invalid.size) {
-			this.invalid.values().next().value.focus();
+			this.focusFirstInvalidWithTab();
 			event.preventDefault();
 			return false;
 		}
@@ -152,24 +222,55 @@ export class Validator {
 	}
 
 	regex(elem, rule) {
-		return rule.test(elem.value);
+		const value = elem.value;
+		
+		// If rule - an Object with attrs pattern and mask
+		if (typeof rule === 'object' && rule.pattern) {
+			const matches = value.match(rule.pattern);
+
+			if (matches) {
+				// If there is a mask 
+				if (rule.mask && typeof rule.mask === 'function') {
+					elem.value = rule.mask(matches);
+				} else if (rule.mask && typeof rule.mask === 'string') {
+					// Apply mask
+					let maskedValue = rule.mask;
+					matches.forEach((match, index) => {
+						maskedValue = maskedValue.replace(`$${index}`, match || '');
+					});
+					elem.value = maskedValue;
+				}
+				return true;
+			}
+			return false;
+		}
+		
+		// If rule is just regular expression
+		if (rule instanceof RegExp) {
+			return rule.test(value);
+		}
+
+		// If rule is string, convert to RegExp
+		if (typeof rule === 'string') {
+			const regex = new RegExp(rule);
+			return regex.test(value);
+		}
+
+		return false;
 	}
 
 	unique(elem, error) {
-		POST(`/match/${this.Model}`, {
-			data: { phone: elem.value },
-			success: (response) => {
-				if (response && !response.result) {
-					this.error(elem, [error]);
-				}
-			},
-		});
+		if(this.uniqueFunction)
+			this.uniqueFunction(elem, error);
+		else
+			console.warn("No unique function found. Specify it in Validator initialization.")
 	}
 
 	markValid(elem, rules) {
 		this.invalid.delete(elem);
 		this.valid.add(elem);
 		elem.invalid = false;
+
 		if (!this.invalid.size) this.form.triggerValid();
 	}
 
@@ -178,11 +279,12 @@ export class Validator {
 		this.invalid.add(elem);
 		this.valid.delete(elem);
 		elem.invalid = true;
+
+		if(this.tabsSwitcher)
+			this.activateTabForElement(elem);
 	}
 
 	triggerError(elem, messages){
-		elem.addClass('invalid');
-
 		let errorBlock;
 		if(elem.nodeName == "SELECT"){
 			errorBlock = elem.parent().next();
@@ -193,93 +295,60 @@ export class Validator {
 
 		if(!errorBlock)
 			throw new Error(`element id ${elem.id}. class errors not found. Example <input...><div class='errors'></div>`);
+
 		if(!errorBlock.hasClass('errors')){
 			errorBlock = Dom.query(`.${elem.name}.errors`)[0];
 		}
+
 		if(errorBlock){
 			messages.forEach((message)=>{
 				errorBlock.html(message);
 			});
 			errorBlock.show();
 		}
+
 		if(this.form)
 			this.form.triggerInvalid();
 	}
+
 	clearError(elem) {
 		elem.removeError();
 		this.invalid.delete(elem);
 		elem.invalid = false;
 	}
-}
 
-export class SlugBasedValidator extends Validator{
-	constructor(form, rules, submitButton, langMenuFunc, tabsFunc, AdminModel){
-		super(form, rules, submitButton);
-		this.langMenuFunc = langMenuFunc;
-		this.tabsFunc = tabsFunc;
-		this.AdminModel = AdminModel;
-	}
-
-	triggerError(elem, message){
-		super.triggerError(elem, message);
-		this.activeElemsTab(elem);
-	}
-
-	activeElemsTab(elem){
-		let fieldset = elem.closest(".langMenu");
-		if(fieldset){
-			let langButton = Dom.query(`div[data-tab=${fieldset.id}]`)[0];
-			let langTabToActivate = {target: langButton};
-			this.langMenuFunc.call(this.AdminModel, langTabToActivate);
-		}
-
-		let tabsMenu = elem.closest(".tabMenu");
-		if(tabsMenu){
-			let tabButton = Dom.query(`div[data-tab=${tabsMenu.id}]`)[0];
-			let tabToActivate = {target: tabButton};
-			this.tabsFunc.call(this.AdminModel, tabToActivate);
-		}
-	}
-
-	submit(event) {
-		for (let [key, rule] of Object.entries(this.rules)) {
-			let elem = this.getElement(key);
-			let errorMsg;
-			if (elem) {
-				errorMsg = this.validate(elem, rule);
-				if (!elem.invalid && rule.unique) this.unique(elem, rule.errors.unique);
-			}
-			if(errorMsg)
-				return false;
-		}
-
-		const recaptcha = Dom.query("#g-recaptcha-response");
-		if (!Array.isArray(recaptcha) && !recaptcha.value) {
-			event.preventDefault();
-			return false;
-		}
-
+	focusFirstInvalid() {
 		if (this.invalid.size) {
 			this.invalid.values().next().value.focus();
-			event.preventDefault();
-			return false;
 		}
 	}
 
-	is_valid() {
-		for (let [key, rule] of Object.entries(this.rules)) {
-			let elem = this.getElement(key);
-			if (elem) { 
-				let errorMsg = this.validate(elem, rule);
-				if(errorMsg.length)
-					return false;
-			}
+	focusFirstInvalidWithTab() {
+		if (this.invalid.size) {
+			const firstInvalid = this.invalid.values().next().value;
+			this.activateTabForElement(firstInvalid);
+			firstInvalid.focus();
+		}
+	}
+
+	activateTabForElement(elem) {
+		if (!this.tabsSwitcher) return;
+
+		const tabContainer = elem.closest('.formTab');
+		if (!tabContainer){
+			console.warn(`Form tab for element ${elem} not found.`);
+			return;
 		}
 
+		this.tabsSwitcher(tabContainer);
+	}
+
+	switchToErrorTab() {
 		if (this.invalid.size) {
-			this.invalid.values().next().value.focus();
-			return false;
+			const firstInvalid = this.invalid.values().next().value;
+			this.activateTabForElement(firstInvalid);
+			return true;
 		}
-		return true;
+		return false;
 	}
 }
